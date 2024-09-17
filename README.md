@@ -1,1 +1,2 @@
 # OneFileGames
+copy -> paste -> play
