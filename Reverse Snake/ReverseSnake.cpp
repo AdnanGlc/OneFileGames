@@ -85,8 +85,7 @@ void PojeoHranu(int pozX,int pozY,char igrac)
        stvori_hranu();
     }
 }
-char bfs(int glavaX,int glavaY)
-{
+char bfs(int glavaX,int glavaY){
     bool bio[visina][sirina]={0};
     //inicijalizacija
     list<pair< pair<int,int>, string > >put;
