@@ -28,8 +28,7 @@ struct Zmija{
     void Zpomjeri(char smjer);
 }zmija;
 
-void PostaviBoju(int boja)
-{
+void PostaviBoju(int boja){
     SetConsoleTextAttribute(handle,boja);
 }
 void font(int Font,bool Vidljivost)
