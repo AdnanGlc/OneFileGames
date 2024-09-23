@@ -20,8 +20,7 @@ bool gameover=false;
 
 HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
 
-struct Zmija
-{
+struct Zmija{
     list<pair<int,int> >rep;
     int boja=crvena;
     bool obrisi;
