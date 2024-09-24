@@ -32,8 +32,7 @@ struct Zmija
 void PostaviBoju(int boja){
     SetConsoleTextAttribute(handle,boja);
 }
-void font(int Font,bool Vidljivost)
-{
+void font(int Font,bool Vidljivost){
     CONSOLE_FONT_INFOEX cfi;
     cfi.cbSize=sizeof(cfi);
     cfi.dwFontSize.X=Font;
