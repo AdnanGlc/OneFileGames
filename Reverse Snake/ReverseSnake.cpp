@@ -1,236 +1,334 @@
 #include<iostream>
-#include<ctime>
-#include<windows.h>
 #include<list>
+#include<Windows.h>
+#include<time.h>
 #include<map>
+#include<thread>
+#include<conio.h>
+#include<vector>
+#include<string>
 
 using namespace std;
 
-const int visina=20,sirina=20;
-const char cHrana=char(254),cZmija=char(178),zid=char(219);
-const int plava=9,crvena=4,bijela=7,roza=12,zelena=10;
-
-const int smjerx[4]={0,0,1,-1};
-const int smjery[4]={-1,1,0,0};
-const char Csmjer[4]={'w','s','d','a'};
-
-char ploca[visina][sirina];
-int IgracX=visina/2+2,IgracY=sirina/2;
-bool gameover=false;
-
-HANDLE handle = GetStdHandle(STD_OUTPUT_HANDLE);
-
-struct Zmija
+const int gameWidth = 20, gameHeight = 20;
+map<UINT, COORD> directions;
+vector<string> _gameMap;
+//
+HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+const char cWall = 219, cFood = 254, cBody = 178;
+enum Color { BLUE = 1, GREEN, CYAN, RED, PURPLE, YELLOW, WHITE, GRAY, DARK_CYAN, LIGHT_GREEN, LIGHT_BLUE, PINK, MAGENTA, BEIGE, WHITE_N_BLACK = 240 };
+const int dirX[4] = { 0,0,1,-1 };
+const int dirY[4] = { -1,1,0,0 };
+const char CDir[4] = { 'w','s','d','a' };
+//const char CDir[4] = { 'w','s','d','a'};
+//
+template<class T>
+void advCout(int x, int y, T msg, Color color = WHITE){
+	SetConsoleTextAttribute(h, color);
+	SetConsoleCursorPosition(h, { (short)x,(short)y });
+	cout << msg;
+}
+//
+class Food
 {
-    list<pair<int,int> >rep;
-    int boja=crvena;
-    bool obrisi;
-    float brzina=108.0;
-    void Zpomjeri(char smjer);
-}zmija;
-
-void PostaviBoju(int boja){
-    SetConsoleTextAttribute(handle,boja);
-}
-void font(int Font,bool Vidljivost){
-    CONSOLE_FONT_INFOEX cfi;
-    cfi.cbSize=sizeof(cfi);
-    cfi.dwFontSize.X=Font;
-    cfi.dwFontSize.Y=Font;
-    cfi.FontFamily=FF_DONTCARE;
-    cfi.FontWeight=FW_NORMAL;
-
-    CONSOLE_CURSOR_INFO cci;
-    cci.bVisible=Vidljivost;
-    cci.dwSize=100;
-
-    SetCurrentConsoleFontEx(handle,false,&cfi);
-    SetConsoleCursorInfo(handle,&cci);
-}
-
-void crtaj(char znak,int X,int Y)
+	COORD _position;
+	int _points;
+public:
+	Food() {
+		while (true)
+		{
+			int tempX = rand() % (gameWidth - 1) + 1;
+			int tempY = rand() % (gameHeight - 1) + 1;
+			//
+			if (_gameMap[tempX][tempY] == cBody || _gameMap[tempX][tempY] == cWall || _gameMap[tempX][tempY] == cFood)continue;
+			_position.X = tempX;
+			_position.Y = tempY;
+			_points = rand() % 3 + 1;
+			_gameMap[tempX][tempY] = cFood;
+			advCout(tempX, tempY, cFood, Color(_points));
+			break;
+		}
+	}
+	Food(const Food& obj){
+		_position = obj._position;
+		_points = obj._points;
+	}
+	~Food() { ; }
+	int getPoints() { return _points; }
+	COORD getPosition() { return _position; }
+	void DecreasePoints() { _points--; }
+};
+list<Food> _food;
+Food FindFood(int x, int y)
 {
-    COORD Poz={X,Y};
-    SetConsoleCursorPosition(handle,Poz);
-    cout<<znak;
+	for (auto it : _food)
+		if (it.getPosition().X == x && it.getPosition().Y == y)
+			return it;
 }
-
-void stvori_hranu()
+class Entity
 {
-    while(true){
-        int r1=rand()%(visina-2)+1;
-        int r2=rand()%(sirina-2)+1;
-
-        if(ploca[r1][r2]!=cHrana && ploca[r1][r2]!=cZmija){
-            ploca[r1][r2]=cHrana;
-            PostaviBoju(plava);
-            crtaj(cHrana,r1,r2);
-            break;
-        }
-    }
-}
-void PojeoHranu(int pozX,int pozY,char igrac)
+protected:
+	list<Food> _foodToConsume;//push_front, pop_back
+	clock_t _lastMoved;
+	float _moveSpeed;
+	bool _alive;
+	Color _color = WHITE;
+	virtual void ConsumeFood() = 0;
+public:
+	Entity() { _lastMoved = clock(); _alive = true; }
+	virtual void Move() = 0;
+	~Entity() { ; }
+};
+class Snake : public Entity
 {
-    if(pozX==IgracX && pozY==IgracY)gameover=true;
-    if(ploca[pozX][pozY]==cHrana && igrac==cHrana){
-        crtaj(' ',zmija.rep.back().first,zmija.rep.back().second);
-        ploca[zmija.rep.back().first][zmija.rep.back().second]=' ';
-        zmija.rep.pop_back();
-        stvori_hranu();
-    }
-    if(ploca[pozX][pozY]==cHrana && igrac==cZmija){
-       zmija.obrisi=false;
-       ploca[pozX][pozY]=' ';
-       stvori_hranu();
-    }
-}
-char bfs(int glavaX,int glavaY){
-    bool bio[visina][sirina]={0};
-    //inicijalizacija
-    list<pair< pair<int,int>, string > >put;
-    put.push_back(make_pair(make_pair(glavaX,glavaY),"x"));
-    string staza;
-    while(put.size())
-    {
-        int x=put.front().first.first;
-        int y=put.front().first.second;
-        staza=put.front().second;
-        put.pop_front();
-        if(ploca[x][y]==cHrana)break;//nasli smo najkraci put do hrane
-        for(int i=0;i<4;i++){
-            int novix=x+smjerx[i];
-            int noviy=y+smjery[i];
-            if(ploca[novix][noviy]!=zid && ploca[novix][noviy]!=cZmija && !bio[novix][noviy]){
-              bio[novix][noviy]=true;
-              put.push_back(make_pair(make_pair(novix,noviy),staza+Csmjer[i]));
-            }
-        }
+	list<COORD> _body;
+	Color _headColor;
+	void ConsumeFood()
+	{
 
-    }
-    return staza[1];
-}
-void Zmija::Zpomjeri(char smjer)
+	}
+	char FindDirection()
+	{
+		bool visited[gameHeight][gameWidth] = { 0 };
+		list<pair<COORD, string> > paths;
+		paths.push_back(make_pair(_body.front(), "x"));
+		string tempPath;
+		while (!paths.empty())
+		{
+			int x = paths.front().first.X;
+			int y = paths.front().first.Y;
+			tempPath = paths.front().second;
+			paths.pop_front();
+			if (_gameMap[x][y] == cFood)break;
+			for (size_t i = 0; i < 4; i++){
+				int newX = x + dirX[i];
+				int newY = y + dirY[i];
+				if (_gameMap[newX][newY] != cWall && _gameMap[newX][newY] != cBody && !visited[newX][newY]){
+					visited[newX][newY] = 1;
+					paths.push_back(make_pair(COORD{ (short)newX,(short)newY }, tempPath + CDir[i]));
+				}
+			}
+		}
+		return tempPath[1];
+	}
+	void ExtendBody_b(int x,int y)
+	{
+		_body.push_back(COORD{ (short)(x),(short)(y) });
+		advCout(x,y, cBody, _color);
+		_gameMap[x][y] = cBody;
+	}
+	void ExtendBody_f(int x, int y)
+	{
+		if (_gameMap[x][y] == cFood)_foodToConsume.push_back(FindFood(x, y));
+		advCout(_body.front().X, _body.front().Y, cBody, _color);
+		_body.push_front(COORD{ (short)(x),(short)(y) });
+		advCout(x, y, cBody, _headColor);
+		_gameMap[x][y] = cBody;
+	}
+public:
+	Snake() : Entity() { 
+		_moveSpeed = 200.0f; 
+		_color = RED;
+		_headColor = PINK;
+		for (size_t i = 0; i < 5; i++)
+			ExtendBody_b(gameWidth / 2 - i, gameHeight / 2);
+		advCout(_body.front().X, _body.front().Y, cBody, _headColor);
+	}
+	void Move() { 
+		if (float(clock() - _lastMoved) / float(CLOCKS_PER_SEC / 1000) < _moveSpeed)return;
+		_lastMoved = clock();
+		//bfs -> food/player
+		char dir = FindDirection();
+		advCout(0, 0, dir);
+		COORD c{ 0,0 };
+		if		(dir == 'w')c = directions[VK_UP];
+		else if (dir == 's')c = directions[VK_DOWN];
+		else if (dir == 'a')c = directions[VK_LEFT];
+		else if (dir == 'd')c = directions[VK_RIGHT];
+		else return;
+		//move
+		ExtendBody_f(_body.front().X + c.X, _body.front().Y + c.Y);
+		//delete tail?
+		if (_foodToConsume.size()){
+			_foodToConsume.back().DecreasePoints();
+			if (_foodToConsume.back().getPoints()<=0)
+				_foodToConsume.pop_back();
+			return;
+		}
+		else {
+			advCout(_body.back().X, _body.back().Y, ' ');
+			_gameMap[_body.back().X][_body.back().Y] = ' ';
+			_body.pop_back();
+		}
+	}
+	list<COORD>& getBody() { return _body; }
+	~Snake() { ; }
+};
+
+class Player : public Entity
 {
-    map<char,pair<int,int> > pomak;
-    pomak['w']=make_pair(0,-1);//gore
-    pomak['s']=make_pair(0,1);//dolje
-    pomak['d']=make_pair(-1,0);//lijevo
-    pomak['a']=make_pair(1,0);//desno
+	COORD _position;
+	float  _moveSpeed;
+	void ConsumeFood()
+	{
 
-    int noviX=zmija.rep.front().first-pomak[smjer].first;
-        int noviY=zmija.rep.front().second+pomak[smjer].second;
-        PojeoHranu(noviX,noviY,cZmija);
-        PostaviBoju(zmija.boja);
-        crtaj(cZmija,noviX,noviY);
-        ploca[noviX][noviY]=cZmija;
-        zmija.rep.push_front(make_pair(noviX,noviY));
-        if(zmija.obrisi){
-                crtaj(' ',zmija.rep.back().first,zmija.rep.back().second);
-        ploca[ zmija.rep.back().first ][zmija.rep.back().second ]=' ';
-        zmija.rep.pop_back();
-                }
-        else zmija.obrisi=true;
-}
-void pomjeri()
+	}
+	//
+	void AsyncMove(COORD dir)
+	{
+		_lastMoved = clock();
+		COORD tempPos = _position;
+		tempPos.X += dir.X;
+		tempPos.Y += dir.Y;
+		if (tempPos.X > 0 && tempPos.X < gameWidth - 1 && tempPos.Y>0 && tempPos.Y < gameHeight - 1){
+			if (_gameMap[tempPos.X][tempPos.Y] == cBody) { _alive = false; return; }
+			if (_gameMap[tempPos.X][tempPos.Y] == cFood); { ConsumeFood(); }
+			advCout(_position.X, _position.Y, ' ');
+			_gameMap[_position.X][_position.Y] = ' ';
+			advCout(tempPos.X, tempPos.Y, cFood,_color);
+			_gameMap[tempPos.X][tempPos.Y] = cFood;
+			_position = tempPos;
+		}
+			
+	}
+public:
+	Player() : Entity() {
+		_moveSpeed = 150.0f;
+		_color = LIGHT_BLUE;
+		_position.X = gameWidth / 2 + gameWidth / 4;
+		_position.Y = gameHeight / 2-1;
+		_gameMap[_position.X][_position.Y] = cFood;
+		advCout(_position.X, _position.Y, cFood, _color);
+	}
+	void Move(){
+		if (float(clock() - _lastMoved) / float(CLOCKS_PER_SEC / 1000) < _moveSpeed)return;
+		if (GetAsyncKeyState(VK_UP) || GetAsyncKeyState('W') || GetAsyncKeyState('w'))
+			AsyncMove(directions[VK_UP]);
+		if (GetAsyncKeyState(VK_DOWN) || GetAsyncKeyState('S') || GetAsyncKeyState('s'))
+			AsyncMove(directions[VK_DOWN]);
+		if (GetAsyncKeyState(VK_LEFT) || GetAsyncKeyState('A') || GetAsyncKeyState('a'))
+			AsyncMove(directions[VK_LEFT]);
+		if (GetAsyncKeyState(VK_RIGHT) || GetAsyncKeyState('D') || GetAsyncKeyState('d'))
+			AsyncMove(directions[VK_RIGHT]);
+	}
+	COORD getPosition() { return _position; }
+	~Player() { ; }
+};
+class Game
 {
-    if(GetAsyncKeyState(VK_UP)&& IgracY!=1 && ploca[IgracX][IgracY-1]!=cZmija){ ///pomjeranje gore
-        PojeoHranu(IgracX,IgracY-1,cHrana);
-        PostaviBoju(zelena);
-        ploca[IgracX][IgracY]=' ';
-        crtaj(' ',IgracX,IgracY);
-        ploca[IgracX][--IgracY]=cHrana;
-        crtaj(cHrana,IgracX,IgracY);
-        crtaj(' ',0,visina);
-    }
-    if(GetAsyncKeyState(VK_DOWN)&& IgracY!=visina-2 && ploca[IgracX][IgracY+1]!=cZmija){ ///pomjeranje dolje
-        PojeoHranu(IgracX,IgracY+1,cHrana);
-        PostaviBoju(zelena);
-        ploca[IgracX][IgracY]=' ';
-        crtaj(' ',IgracX,IgracY);
-        ploca[IgracX][++IgracY]=cHrana;
-        crtaj(cHrana,IgracX,IgracY);
-        crtaj(' ',0,visina);
-    }
-    if(GetAsyncKeyState(VK_RIGHT)&& IgracX!=sirina-2 && ploca[IgracX+1][IgracY]!=cZmija){ ///pomjeranje desno
-        PojeoHranu(IgracX+1,IgracY,cHrana);
-        PostaviBoju(zelena);
-        ploca[IgracX][IgracY]=' ';
-        crtaj(' ',IgracX,IgracY);
-        ploca[++IgracX][IgracY]=cHrana;
-        crtaj(cHrana,IgracX,IgracY);
-        crtaj(' ',0,visina);
-    }
-     if(GetAsyncKeyState(VK_LEFT)&& IgracX!=1 && ploca[IgracX-1][IgracY]!=cZmija){ ///pomjeranje lijevo
-        PojeoHranu(IgracX-1,IgracY,cHrana);
-        PostaviBoju(zelena);
-        ploca[IgracX][IgracY]=' ';
-        crtaj(' ',IgracX,IgracY);
-        ploca[--IgracX][IgracY]=cHrana;
-        crtaj(cHrana,IgracX,IgracY);
-        crtaj(' ',0,visina);
-    }
-}
-
-void setup()
-{
-    system("mode 25,25");
-    system("title Reverse Snake");
-    gameover=false;
-    IgracX=visina/2+2;IgracY=sirina/2;
-    system("cls");
-    font(20,false);
-    for(int i=0;i<visina;i++){
-        for(int j=0;j<sirina;j++){
-            if(!i || !j || i==visina-1 || j==sirina-1){cout<<zid; ploca[i][j]=zid;}
-            else {cout<<" ";ploca[i][j]=' ';}
-        }
-        cout<<endl;
-    }
-    PostaviBoju(zelena);
-    crtaj(cHrana,IgracX,IgracY);
-    PostaviBoju(zmija.boja);
-    while(zmija.rep.size())zmija.rep.pop_back();
-    for(int i=0;i<4;i++){
-            zmija.rep.push_back(make_pair(visina/2-1-i,sirina/2));
-            ploca[visina/2-1-i][sirina/2]=cZmija;
-            crtaj(cZmija,visina/2-1-i,sirina/2);
-    }
-    zmija.obrisi=true;
-    crtaj(' ',0,visina);
-
-    stvori_hranu();
-}
+	Player *_player;
+	Snake *_snake;
+	clock_t _lastGenerated;
+	float _frequency = 2000.0f;
+	void SetFont(int fontSize = 15)
+	{
+		CONSOLE_FONT_INFOEX cfi;
+		cfi.cbSize = sizeof(cfi);
+		cfi.dwFontSize.X = fontSize;
+		cfi.dwFontSize.Y = fontSize;
+		cfi.FontFamily = FF_DONTCARE;
+		cfi.FontWeight = FW_NORMAL;
+		SetCurrentConsoleFontEx(h, true, &cfi);
+		CONSOLE_CURSOR_INFO cci;
+		//if (cci.bVisible == false)return;
+		cci.bVisible = false;
+		cci.dwSize = 100;
+		SetConsoleCursorInfo(h, &cci);
+	}
+	void SetWindow(int fontSize)
+	{
+		//set dimensions
+		SetWindowPos(GetConsoleWindow(), nullptr, 0, 0, (gameWidth + 2) * fontSize, (gameHeight + 2) * fontSize, SWP_NOZORDER | SWP_NOMOVE);
+		system(("mode con cols=" + to_string(gameWidth) + " lines=" + to_string(gameHeight)).c_str());
+		//set position
+		HWND consoleWindow = GetConsoleWindow();
+		RECT screenRect;
+		GetWindowRect(GetDesktopWindow(), &screenRect);
+		int screenWidth = screenRect.right;
+		int screenHeight = screenRect.bottom;
+		RECT consoleRect;
+		GetWindowRect(consoleWindow, &consoleRect);
+		int consoleWidth = consoleRect.right - consoleRect.left;
+		int consoleHeight = consoleRect.bottom - consoleRect.top;
+		int posX = (screenWidth - consoleWidth) / 2;
+		int posY = (screenHeight - consoleHeight) / 2;
+		MoveWindow(consoleWindow, posX, posY, consoleWidth, consoleHeight, TRUE);
+	}
+	void Drawborder()
+	{
+		char* border = new char[gameWidth + 1];
+		memset(border, cWall, gameWidth * sizeof(char));
+		border[gameWidth] = '\0';
+		advCout(0, 0, border, LIGHT_GREEN);
+		advCout(0, gameHeight - 1, border, LIGHT_GREEN);
+		for (size_t i = 0; i < gameHeight - 1; i++)
+		{
+			advCout(0, i + 1, cWall, LIGHT_GREEN);
+			advCout(gameWidth - 1, i + 1, cWall, LIGHT_GREEN);
+		}
+	}
+	void UpdateTitle()
+	{
+		string title = "title Reverse Snake ";
+		system(title.c_str());
+	}
+	void playSound()
+	{
+		Beep(1200, 50);
+	}
+public:
+	Game(int fontSize = 20)
+	{
+		srand(time(NULL));
+		//setfont,cursor and window to height and width
+		SetFont(fontSize);
+		//set windows size
+		SetWindow(fontSize);
+		system("cls");
+		//set title
+		UpdateTitle();
+		//set border
+		Drawborder();
+		_lastGenerated = clock();
+	}
+	void Play()
+	{
+		_player = new Player();
+		_snake = new Snake();
+		while (true)
+		{
+			_player->Move();
+			_snake->Move();
+			if (float(clock() - _lastGenerated) / float(CLOCKS_PER_SEC / 1000) > _frequency)
+			{
+				_food.push_back(Food());
+				_lastGenerated = clock();
+			}
+		}
+	}
+};
 int main()
 {
-    srand(time(NULL));
-    pocetak:
-    setup();
+	//
+	directions[VK_UP]	= { 0,-1 };//VK_UP
+	directions[VK_DOWN]	= { 0,1 };//VK_DOWN
+	directions[VK_LEFT]	= { -1,0 };//VK_LEFT
+	directions[VK_RIGHT]	= { 1,0 };//VK_RIGHT	
+	//setup empty map
+	string s = "";
+	for (size_t i = 0; i < gameWidth; i++)s += " ";
+	s[0] = s[gameWidth - 1] = cWall;
+	_gameMap.insert(_gameMap.begin(), gameHeight, s);
+	s = "";
+	for (size_t i = 0; i < gameWidth; i++)s += cWall;
+	_gameMap[0] = _gameMap[gameHeight - 1] = s;
+	//
+	for (auto it : _gameMap)
+		cout << it << endl;
 
-    crtaj('\r',0,visina);
-    PostaviBoju(0);
-    system("pause");
-    clock_t start=clock()/2,kraj;
-    while(zmija.rep.size() && !gameover){
-        pomjeri();
-        kraj=clock();
-        if( float(kraj-start)/float(CLOCKS_PER_SEC/1000)>zmija.brzina && zmija.rep.size()){
-        zmija.Zpomjeri(bfs(zmija.rep.front().first,zmija.rep.front().second));
-        start=clock();
-        if(zmija.rep.size()==1)zmija.brzina=109.0;
-        else zmija.brzina=99.0;
-        }
-        Sleep(100);
-    }
-    crtaj('\r',0,visina);
-    PostaviBoju(7);
-    if(gameover)cout<<"GAMEOVER"<<endl;
-    else cout<<"POBIJEDILI STE"<<endl;
-    cout<<"Play again- ENTER"<<endl;
-    cout<<"Exit game- ESC"<<endl;
-    while(true)
-    {
-      if(GetAsyncKeyState('\r'))goto pocetak;
-      if(GetAsyncKeyState(VK_ESCAPE))break;
-    }
-    return 0;
+	Game game;
+	game.Play();
+
+	system("pause>null");
+	return 0;
 }
