@@ -1,302 +1,221 @@
 #include<iostream>
 #include<list>
-#include<vector>
 #include<Windows.h>
-#include<string>
+#include<time.h>
+#include<map>
 #include<thread>
-#include<mutex>
 #include<conio.h>
+#include<vector>
+#include<string>
 
 using namespace std;
-//
-const short gameHeight = 30, gameWidth = 50,fps=24;
-HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-//
-enum Direction { UP, DOWN, LEFT, RIGHT };
-enum Color {BLUE=1,GREEN,CYAN,RED,PURPLE,YELLOW,WHITE,GRAY,DARK_CYAN,LIGHT_GREEN,LIGHT_BLUE,PINK,MAGENTA,BEIGE,WHITE_N_BLACK=240};
-const char fBlock = 219, mBlock = 254, dBlock = 220, lBlock = 221, rBlock = 222, uBlock = 223;
-const char lShade = 176, mShade = 177, sShade = 178;
-const char rTriangle = 16, lTriangle = 17, uTriangle = 30, dTriangle = 31;
-const float moveSpeeds[] = { 100.0f,150.0f,200.0f,250.0f,300.0f };
-const float shootingSpeeds[] = { 200.0f,500.0f,700.0f,900.0f,1800.0f };
-const float bulletSpeed = 10.0f;
-vector<string> robotBodies;
-mutex guard;
-//
-string reverseBody(string body)
-{					
-	string rBody = "";
-	for (int i = body.length() - 2; i >= 0; i--)
-		if ((i + 1) % 4 == 0)rBody += '\n';
-		else if (body[i] == dBlock)rBody += uBlock;//down->up
-		else if (body[i] == rBlock)rBody += lBlock;//right -> left
-		else if (body[i] == uBlock)rBody += dBlock;//up -> down
-		else if (body[i] == lBlock)rBody += rBlock;// left -> right
-		else if (body[i] == uTriangle)rBody += dTriangle;
-		else if (body[i] == dTriangle)rBody += uTriangle;
-		else if (body[i] == lTriangle)rBody += rTriangle;
-		else if (body[i] == rTriangle)rBody += lTriangle;
-		else if (body[i] != '\n')rBody += body[i];
-	return rBody;
-}
-void advCout(short x, short y, string text, Color color=WHITE)
-{
-	vector<string> textLines;
-	string temp = "";
-	for (size_t i = 0; i < text.length(); i++)
-		if (text[i] != '\n')
-			temp += text[i];
-		else {
-			textLines.push_back(temp);
-			temp = "";
-		}
-	if (temp != "")textLines.push_back(temp);
-	SetConsoleTextAttribute(h, color);
-	for (short i = 0; i < textLines.size(); i++)
-	{
-		SetConsoleCursorPosition(h, { x,short(y + i) });
-		cout << textLines[i];
-	}
-	SetConsoleTextAttribute(h, WHITE);
-}
-template<class T>
-void advCout(short x, short y,T  sign, Color color=WHITE)
-{
-	SetConsoleTextAttribute(h, color);
-	SetConsoleCursorPosition(h, { x,y });
-	cout << sign;
-	SetConsoleTextAttribute(h, WHITE);
-}
-template<class T1>
-class MenuPicker
-{
-	int _x, _y;
-	int _index = 0;
-	vector<T1> _choices;
-	string _message;
-public:
-	MenuPicker(string message,vector<T1>& choices,int x=0, int y=0)
-	{
-		_x = x;
-		_y = y;
-		_index = 0;
-		_choices = choices;
-		_message = message;
-		advCout(_x,_y, message, WHITE_N_BLACK);
-		advCout(_x - 2, _y, lTriangle, WHITE);
-		advCout(_x + message.length()+1, _y, rTriangle, WHITE);
-        advCout(_x + message.length() / 2 -3 , _y + 2, choices[_index]);
-	}
-	T1 Select()
-	{
-		while (true){
-			if (_kbhit()) {
 
-				if (GetAsyncKeyState(VK_RIGHT)){
-					_index++;
-					if (_index >= _choices.size())_index = 0;
-				}
-				if (GetAsyncKeyState(VK_LEFT)){
-					_index--;
-					if (_index < 0)_index = _choices.size() - 1;
-				}
-				if (GetAsyncKeyState(VK_RETURN))
-				{
-					system("cls");
-					return _choices[_index];
-				}
-				Sleep(300);
-				advCout(_x + _message.length()/2-3, _y + 2, _choices[_index], WHITE);
-			}
+const int gameWidth = 20, gameHeight = 20;
+map<char, COORD> directions;
+vector<string> _gameMap;
+//
+HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+const char cWall = 219, cFood = 15, cBody = 178,cPlayer=2;
+enum Color { BLUE = 1, GREEN, CYAN, RED, PURPLE, YELLOW, WHITE, GRAY, DARK_CYAN, LIGHT_GREEN, LIGHT_BLUE, PINK, MAGENTA, BEIGE, WHITE_N_BLACK = 240 };
+const int dirX[4] = { 0,0,1,-1 };
+const int dirY[4] = { -1,1,0,0 };
+const char CDir[4] = { 'w','s','d','a' };
+//const char CDir[4] = { 'w','s','d','a'};
+//
+template<class T>
+void advCout(int x, int y, T msg, Color color = WHITE){
+	SetConsoleTextAttribute(h, color);
+	SetConsoleCursorPosition(h, { (short)x,(short)y });
+	cout << msg;
+}
+//
+class Food
+{
+	COORD _position;
+	int _points;
+public:
+	Food() {
+		while (true)
+		{
+			int tempX = rand() % (gameWidth - 1) + 1;
+			int tempY = rand() % (gameHeight - 1) + 1;
+			//
+			if (_gameMap[tempX][tempY] == cBody || _gameMap[tempX][tempY] == cWall || _gameMap[tempX][tempY] == cFood)continue;
+			_position.X = tempX;
+			_position.Y = tempY;
+			_points = rand() % 3 + 1;
+			_gameMap[tempX][tempY] = cFood;
+			advCout(tempX, tempY, cFood, Color(_points));
+			break;
 		}
 	}
+	Food(const Food& obj){
+		_position = obj._position;
+		_points = obj._points;
+	}
+	~Food() { ; }
+	int getPoints() { return _points; }
+	COORD getPosition() { return _position; }
+	void DecreasePoints() { _points--; }
 };
 //
-class Bullet
-{
-public:
-	short _x, _y;
-	Direction _direnciton;
-	clock_t _lastMoved;
-	Bullet(int x, int y, Direction direction) { _x = x, _y = y; _direnciton = direction; _lastMoved = clock(); }
-	~Bullet() { ; }
-	void moveBullet(Color color = GRAY)
-	{
-		_lastMoved = clock();
-		advCout(_x, _y, ' ');
-		if (_direnciton == RIGHT)_x++;
-		else _x--;
-		if (_x != gameWidth - 3 && _x != 2)
-			advCout(_x, _y, _direnciton==RIGHT?rTriangle:lTriangle, color);
-	}
-};
-class Robot
+list<Food> _food;
+Food FindFood(int x, int y){
+	for (auto it : _food)
+		if (it.getPosition().X == x && it.getPosition().Y == y)
+			return it;
+}
+//
+class Entity
 {
 protected:
-	short _x, _y;
-	float _moveSpeed, _shootingSpeed;
-	list<Bullet> _bullets;
-	string _body;
-	Color _color;
-	clock_t _lastMoved, _lastShot;
-	void moveBullets() {
-		//move existing bullets
-		if (_bullets.size())
-			if (_bullets.back()._x >= gameWidth - 3 && _bullets.back()._direnciton == RIGHT)
-				_bullets.pop_back();
-			else if (_bullets.back()._x <= 2 && _bullets.back()._direnciton == LEFT)
-				_bullets.pop_back();
-
-		for (auto& it : _bullets)
-			if (float(clock() - it._lastMoved) > 100.0f)
-				it.moveBullet(_color);
-	}
-	void asyncMove(Direction direction)
-	{
-		if (direction == UP && _y > 1)
-		{
-			advCout(_x, _y + 2, "    ");
-			_y--;
-			advCout(_x, _y, _body, _color);
-			_lastMoved = clock();
-			return;
-		}
-		else if (direction == DOWN && _y < gameHeight - 4)
-		{
-			advCout(_x, _y, "    ");
-			_y++;
-			advCout(_x, _y, _body, _color);
-			_lastMoved = clock();
-			return;
-		}
-	}
-	void asyncShoot(int x,int y,Direction direction)
-	{
-		_lastShot = clock();
-		_bullets.push_front(Bullet(x, y, direction));
-		_bullets.front()._lastMoved = clock();
-	}
+	clock_t _lastMoved;
+	float _moveSpeed;
+	bool _alive;
+	Color _color = WHITE;
 public:
-	int _lives;
-	Robot(int diff = 3)
-	{
-		_moveSpeed = moveSpeeds[diff];
-		_shootingSpeed = shootingSpeeds[diff];
-		_lastMoved = clock();
-		_lastShot = clock();
-		_color = Color(rand() % 15 + 1);
-		_lives = 1;
-	}
-	~Robot()
-	{
-
-	}
+	Entity() { _lastMoved = clock(); _alive = true; }
 	virtual void Move() = 0;
-	virtual void Shoot() = 0;
-	int getLives() { return _lives; }
-	void reduceLife() { cout << '\7'; _lives--; }
-	int getX() { return _x; }
-	int getY() { return _y; }
-	list<Bullet>& getBullets() { return _bullets; }
-	bool IsHit(Bullet bullet) { return _x<bullet._x&& _x + 3>bullet._x && _y < bullet._y&& _y + 3 >= bullet._y; }
+	~Entity() { ; }
 };
-class Player : public Robot
+class Snake : public Entity
 {
-public:
-	Player(int difficulty = 3) : Robot(difficulty)
+private:
+	list<Food> _foodToConsume;//push_front, pop_back
+	list<COORD> _body;
+	Color _headColor;
+	unsigned int _negativePoints=0;
+	void ConsumeFood()
 	{
-		_x = 1;
-		_y = gameHeight / 2 - 3;
-		advCout(_x, _y, _body, _color);
-		_lives = 3;
-		MenuPicker<string> mp("Chose a body", robotBodies, gameWidth/2-6, gameHeight/2-5);
-		_body = mp.Select();
-		advCout(_x, _y, _body, _color);
-	}
-	virtual void Move()
-	{
-		if (float(clock() - _lastMoved) > _moveSpeed){
-			Direction dir = Direction(-1);
-			if (GetAsyncKeyState(VK_UP))
-				dir = UP;
-			else if (GetAsyncKeyState(VK_DOWN))
-				dir = DOWN;
-			if (dir != -1){
-				thread tMOve(&Player::asyncMove, this,dir);
-				tMOve.join();
-			} 
+		if (_foodToConsume.size()) {
+			_foodToConsume.back().DecreasePoints();
+			if (_foodToConsume.back().getPoints() <= 0)
+				_foodToConsume.pop_back();
+		}
+		else {
+			advCout(_body.back().X, _body.back().Y, ' ');
+			_gameMap[_body.back().X][_body.back().Y] = ' ';
+			_body.pop_back();
+		}
+		while (_negativePoints)
+		{
+			advCout(_body.back().X, _body.back().Y, ' ');
+			_gameMap[_body.back().X][_body.back().Y] = ' ';
+			_body.pop_back();
+			_negativePoints--;
 		}
 	}
-	virtual void Shoot()
+	char FindDirection()
 	{
-		moveBullets();
-		//shoot new bullet
-		if (float(clock() - _lastShot) > _shootingSpeed)
-			if(GetAsyncKeyState(VK_SPACE)){
-				thread tShoot(&Player::asyncShoot, this,_x+4,_y+1,RIGHT);
-				tShoot.join();
+		bool visited[gameHeight][gameWidth] = { 0 };
+		list<pair<COORD, string> > paths;
+		paths.push_back(make_pair(_body.front(), "x"));
+		string tempPath;
+		while (!paths.empty())
+		{
+			int x = paths.front().first.X;
+			int y = paths.front().first.Y;
+			tempPath = paths.front().second;
+			paths.pop_front();
+			if (_gameMap[x][y] == cFood || _gameMap[x][y]==cPlayer)break;
+			for (size_t i = 0; i < 4; i++){
+				int newX = x + dirX[i];
+				int newY = y + dirY[i];
+				if (_gameMap[newX][newY] != cWall && _gameMap[newX][newY] != cBody && !visited[newX][newY]){
+					visited[newX][newY] = 1;
+					paths.push_back(make_pair(COORD{ (short)newX,(short)newY }, tempPath + CDir[i]));
+				}
 			}
+		}
+		tempPath += 'x';
+		return tempPath[1];
 	}
-	
-};
-class Enemy : public Robot
-{
-	Direction _movingDireciton;
+	void ExtendBody_f(int x, int y)
+	{
+		if (_food.size() && _gameMap[x][y] == cFood)_foodToConsume.push_back(FindFood(x, y));
+		if(_body.size())
+			advCout(_body.front().X, _body.front().Y, cBody, _color);
+		_body.push_front(COORD{ (short)(x),(short)(y) });
+		advCout(x, y, cBody, _headColor);
+		_gameMap[x][y] = cBody;
+	}
 public:
-	Enemy(int x,int y,int difficulty) : Robot(5-difficulty)
+	Snake() : Entity() { 
+		_moveSpeed = 160.0f; 
+		_color = RED;
+		_headColor = PINK;
+		for (int i = -5; i < 0; i++)
+			ExtendBody_f(gameWidth / 2 + i, gameHeight / 2);
+	}
+	void Move() { 
+		if (float(clock() - _lastMoved) / float(CLOCKS_PER_SEC / 1000) < _moveSpeed)return;
+		_lastMoved = clock();
+		//bfs -> food/player
+		char dir = FindDirection();
+		//move
+		ExtendBody_f(_body.front().X + directions[dir].X, _body.front().Y + directions[dir].Y);
+		//delete tail?
+		ConsumeFood();
+	}
+	list<COORD>& getBody() { return _body; }
+	list<Food>& getSnakeFood() { return _foodToConsume; }
+	unsigned int& getNegativePoints() { return _negativePoints; }
+	void increseNegativePoints() { _negativePoints++; }
+	~Snake() { ; }
+};
+class Player : public Entity
+{
+	COORD _position;
+	float  _moveSpeed;
+	//
+	void AsyncMove(COORD dir,unsigned int& negativePoints)
 	{
-		_x = x;
-		_y = y;
-		_movingDireciton = Direction(rand()%2);//up or down
-		_body = reverseBody(robotBodies[rand() % robotBodies.size()]);
-		advCout(_x, _y, _body, _color);
-	}
-	~Enemy()
-	{
-		for (short i = -1; i < 4; i++)
-			advCout(_x, _y + i, "   ");
-		while (_bullets.size()){
-			if (_bullets.back()._x >= 1)
-				advCout(_bullets.back()._x, _bullets.back()._y, ' ');
-			_bullets.pop_back();
+		_lastMoved = clock();
+		COORD tempPos = _position;
+		tempPos.X += dir.X;
+		tempPos.Y += dir.Y;
+		if (tempPos.X > 0 && tempPos.X < gameWidth - 1 && tempPos.Y>0 && tempPos.Y < gameHeight - 1){
+			if (_gameMap[tempPos.X][tempPos.Y] == cBody) { _alive = false; return; }
+			if (_gameMap[tempPos.X][tempPos.Y] == cFood)negativePoints++;
+			advCout(_position.X, _position.Y, ' ');
+			_gameMap[_position.X][_position.Y] = ' ';
+			advCout(tempPos.X, tempPos.Y, cPlayer,_color);
+			_gameMap[tempPos.X][tempPos.Y] = cPlayer;
+			_position = tempPos;
 		}
 	}
-	virtual void Move()
-	{ 
-		if (_y == 1)_movingDireciton = DOWN;
-		if (_y >= gameHeight - 4)_movingDireciton = UP;
-		if (float(clock() - _lastMoved) > _moveSpeed){
-			thread tMove(&Enemy::asyncMove, this, _movingDireciton);
-			tMove.join();
-		}
+public:
+	Player() : Entity() {
+		_moveSpeed = 150.0f;
+		_color = LIGHT_BLUE;
+		_position.X = gameWidth / 2 + gameWidth / 4;
+		_position.Y = gameHeight / 2-1;
+		_gameMap[_position.X][_position.Y] = cFood;
+		advCout(_position.X, _position.Y, cPlayer, _color);
 	}
-	virtual void Shoot() 
-	{ 
-		moveBullets();
-		if (float(clock() - _lastShot) > _shootingSpeed){
-			thread tShoot(&Enemy::asyncShoot, this, _x - 1, _y + 1, LEFT);
-			tShoot.join();
-		}
+	void Move() override { ; }
+	void Move(unsigned int& negativePoints){
+		if (float(clock() - _lastMoved) / float(CLOCKS_PER_SEC / 1000) < _moveSpeed)return;
+		if (GetAsyncKeyState(VK_UP) || GetAsyncKeyState('W') || GetAsyncKeyState('w'))
+			AsyncMove(directions['w'], negativePoints);
+		else if (GetAsyncKeyState(VK_DOWN) || GetAsyncKeyState('S') || GetAsyncKeyState('s'))
+			AsyncMove(directions['s'], negativePoints);
+		else if (GetAsyncKeyState(VK_LEFT) || GetAsyncKeyState('A') || GetAsyncKeyState('a'))
+			AsyncMove(directions['a'], negativePoints);
+		else if (GetAsyncKeyState(VK_RIGHT) || GetAsyncKeyState('D') || GetAsyncKeyState('d'))
+			AsyncMove(directions['d'], negativePoints);
 	}
-	bool CheckHit(int x,int y)
-	{
-		if (_bullets.size() == 0)return false;
-		int bulletX = _bullets.back()._x;
-		int bulletY = _bullets.back()._y;
-		bool hit = x < bulletX&& x + 3 >= bulletX && y < bulletY&& y + 3 >= bulletY;
-		if (hit){
-			advCout(_bullets.back()._x, _bullets.back()._y, ' ');
-			_bullets.pop_back();
-		}
-		return hit;
-	}
+	COORD getPosition() { return _position; }
+	bool IsAlive() { return _alive; }
+	~Player() { ; }
 };
 class Game
 {
-	Player *_player = nullptr;
-	vector<Enemy*> _enemies;
-	int _difficulty,_score = 0;
-	void SetFont(int fontSize=15)
+	Player *_player;
+	Snake *_snake;
+	clock_t _lastGenerated;
+	float _frequency = 2000.0f;
+	void SetFont(int fontSize = 15)
 	{
 		CONSOLE_FONT_INFOEX cfi;
 		cfi.cbSize = sizeof(cfi);
@@ -333,139 +252,117 @@ class Game
 	void Drawborder()
 	{
 		char* border = new char[gameWidth + 1];
-		memset(border, fBlock, gameWidth * sizeof(char));
+		memset(border, cWall, gameWidth * sizeof(char));
 		border[gameWidth] = '\0';
-		advCout(0, 0, border, RED);
-		advCout(0, gameHeight - 1, border, RED);
+		advCout(0, 0, border, LIGHT_GREEN);
+		advCout(0, gameHeight - 1, border, LIGHT_GREEN);
 		for (size_t i = 0; i < gameHeight - 1; i++)
 		{
-			advCout(0, i + 1, fBlock, RED);
-			advCout(gameWidth - 1, i + 1, fBlock, RED);
+			advCout(0, i + 1, cWall, LIGHT_GREEN);
+			advCout(gameWidth - 1, i + 1, cWall, LIGHT_GREEN);
 		}
 	}
-	void UpdateTitle()
+	void UpdateTitle(string msg="")
 	{
-		string title = "title 2dShooter  lives " + to_string(_player->getLives()) + "  score " + to_string(_score);
+		string title = "title Reverse Snake " + msg;
 		system(title.c_str());
 	}
 	void playSound()
 	{
 		Beep(1200, 50);
 	}
+	//
+	int min=0,sec=0, ms = 0;
+	bool running = false;
+	void clockThread()
+	{
+		while (running) {
+			this_thread::sleep_for(chrono::milliseconds(100));
+			ms += 100;
+			if (ms > 1000) { ms -= 1000; sec += 1; }
+			if (sec > 60) { sec -= 60; min += 1; }
+		}
+	}
+	void startClock() { running = true; }
+	void stopClock() { running = false; }
+	//
 public:
-	Game(int difficulty = 3,int fontSize = 20)
+	Game(int fontSize = 20)
 	{
 		srand(time(NULL));
-		_difficulty = difficulty;
 		//setfont,cursor and window to height and width
 		SetFont(fontSize);
 		//set windows size
 		SetWindow(fontSize);
-	}
-	void Setup()
-	{
-		//get player and enemies
 		system("cls");
-		_player = new Player(_difficulty);
-		for (int i = 0; i < 3; i++)
-			_enemies.push_back(new Enemy((gameWidth - 5 - i * 3), rand() % (gameHeight - 4) + 1, _difficulty));
-		//set border
-		Drawborder();
 		//set title
 		UpdateTitle();
+		//set border
+		Drawborder();
+		_lastGenerated = clock();
 	}
 	void Play()
 	{
-		while (_player->getLives())
+		time_t t = time(nullptr);
+		tm startTime,now;
+		localtime_s(&startTime,&t);
+		_player = new Player();
+		_snake = new Snake();
+		thread tClock(&Game::clockThread, this);
+		tClock.join();
+		startClock();
+		while (_snake->getBody().size() && _player->IsAlive())
 		{
-			clock_t frameStart = clock();
-			_player->Move();
-			_player->Shoot();
-			for (auto &it: _enemies)
+			_player->Move(_snake->getNegativePoints());
+			_snake->Move();
+			if (float(clock() - _lastGenerated) / float(CLOCKS_PER_SEC / 1000) > _frequency)
 			{
-				it->Move();
-				it->Shoot();
-				if (it->getBullets().size() &&  _player->IsHit(it->getBullets().back()))
-					_player->reduceLife();
-				if(_player->getBullets().size())
-					if (it->IsHit(_player->getBullets().back()))
-					{
-						_player->getBullets().pop_back();
-						_score += 100;
-						int x = it->getX();
-						delete it;
-						thread ts(&Game::playSound, this);
-						ts.join();
-						it = new Enemy(x, rand() % (gameHeight - 4) + 1, _difficulty);
-					}
+				_food.push_back(Food());
+				_lastGenerated = clock();
 			}
-			UpdateTitle();
-			clock_t frameEnd = clock();
-			if (double(frameEnd - frameStart) / CLOCKS_PER_SEC * 1000 < 1000 / fps)
-				Sleep(1000 / fps - double(frameEnd - frameStart) / CLOCKS_PER_SEC * 1000);
+			localtime_s(&now, &t);
+
+			UpdateTitle(" \\\\ lenght: " + to_string(_snake->getBody().size()) + " \\\\ time: "+to_string(min)+":"+(sec<10?"0":"")+ to_string(sec) + ":" + to_string(ms / 100));
 		}
 		system("cls");
-		advCout(0, 0, "GAME OVER", RED);
-		advCout(0, 1, "Final score: "+to_string(_score), RED);
+		string msg = _player->IsAlive() ? "YOU WIN": "YOU LOSE";
+		advCout(gameWidth / 2 - msg.length() / 2, gameHeight / 2, msg, _player->IsAlive() ? GREEN : RED);
+		msg = "PLAY AGAIN -> enter";
+		advCout(gameWidth / 2 - msg.length() / 2, gameHeight / 2, msg, WHITE);
+		msg = "EXIT -> esc";
+		advCout(gameWidth / 2 - msg.length() / 2, gameHeight / 2, msg, WHITE);
+		while (true)
+		{
+			if (GetAsyncKeyState(VK_ESCAPE))break;
+			//finish
+		}
 	}
 };
 int main()
 {
+	/*for (int i = 0; i < 256; i++)
+		cout << i << " " << char(i) << endl;
+	return 0;*/
 	//
-	robotBodies.push_back("");
-	robotBodies.back() += dBlock; robotBodies.back() += dBlock; robotBodies.back() += fBlock;		robotBodies.back() += "\n";
-	robotBodies.back() += rBlock; robotBodies.back() += mBlock; robotBodies.back() += rTriangle; robotBodies.back() += "\n";
-	robotBodies.back() += uBlock; robotBodies.back() += uBlock; robotBodies.back() += fBlock;		robotBodies.back() += "\n";
+	directions['w'] = {0,-1};//VK_UP
+	directions['s'] = {0,1};//VK_DOWN
+	directions['a'] = {-1,0};//VK_LEFT
+	directions['d'] = {1,0};//VK_RIGHT	
+	//setup empty map
+	string s = "";
+	for (size_t i = 0; i < gameWidth; i++)s += " ";
+	s[0] = s[gameWidth - 1] = cWall;
+	_gameMap.insert(_gameMap.begin(), gameHeight, s);
+	s = "";
+	for (size_t i = 0; i < gameWidth; i++)s += cWall;
+	_gameMap[0] = _gameMap[gameHeight - 1] = s;
 	//
-	robotBodies.push_back("");
-	robotBodies.back() += lTriangle; robotBodies.back() += fBlock; robotBodies.back() += rTriangle;		robotBodies.back() += "\n";
-	robotBodies.back() += " "; robotBodies.back() += rBlock; robotBodies.back() += mBlock; robotBodies.back() += "\n";
-	robotBodies.back() += lTriangle; robotBodies.back() += fBlock; robotBodies.back() += rTriangle;		robotBodies.back() += "\n";
-	//
-	robotBodies.push_back("");
-	robotBodies.back() += dBlock; robotBodies.back() += fBlock; robotBodies.back() += fBlock; robotBodies.back() += "\n";
-	robotBodies.back() += rBlock; robotBodies.back() += fBlock; robotBodies.back() += mBlock; robotBodies.back() += "\n";
-	robotBodies.back() += uBlock; robotBodies.back() += fBlock; robotBodies.back() += fBlock; robotBodies.back() += "\n";
-	//
-	robotBodies.push_back("");
-	robotBodies.back() += dBlock; robotBodies.back() += fBlock; robotBodies.back() += rTriangle; robotBodies.back() += "\n";
-	robotBodies.back() += rBlock; robotBodies.back() += mBlock; robotBodies.back() += mBlock; robotBodies.back() += "\n";
-	robotBodies.back() += uBlock; robotBodies.back() += fBlock; robotBodies.back() += rTriangle; robotBodies.back() += "\n";
-	//
-	robotBodies.push_back("");
-	robotBodies.back() += rBlock; robotBodies.back() += dBlock; robotBodies.back() += " "; robotBodies.back() += "\n";
-	robotBodies.back() += fBlock; robotBodies.back() += mBlock; robotBodies.back() += mBlock; robotBodies.back() += "\n";
-	robotBodies.back() += rBlock; robotBodies.back() += uBlock; robotBodies.back() += " "; robotBodies.back() += "\n";
-	//
-	robotBodies.push_back("");
-	robotBodies.back() += rBlock; robotBodies.back() += rTriangle; robotBodies.back() += " "; robotBodies.back() += "\n";
-	robotBodies.back() += fBlock; robotBodies.back() += mBlock; robotBodies.back() += mBlock; robotBodies.back() += "\n";
-	robotBodies.back() += rBlock; robotBodies.back() += rTriangle; robotBodies.back() += " "; robotBodies.back() += "\n";
-	Game *game = new Game(3,20);
-	vector<int> dif = { 1,2,3,4,5 };
-	MenuPicker<int> mp("Chose difficulty", dif, gameWidth/2-8, gameHeight/2-2);
-	int difficulty = mp.Select();
+	for (auto it : _gameMap)
+		cout << it << endl;
 
-	while (true)
-	{
-		game->Setup();
-		game->Play();
-		advCout(0, 2, "PLAY AGAIN -> ENTER");
-		advCout(0, 3, "EXIT -> ESC");
-		bool flag = false;
-		while (true)
-		{
-			if (GetAsyncKeyState(VK_ESCAPE)){
-				flag = true;
-				break;
-			}
-			if (GetAsyncKeyState(VK_RETURN))
-				break;
-		}
-		if (flag)
-			break;
-		delete game;
-		game = new Game(difficulty);
-	}
+	Game game;
+	game.Play();
+
+	system("pause>null");
 	return 0;
 }
