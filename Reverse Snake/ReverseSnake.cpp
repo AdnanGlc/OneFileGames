@@ -34,8 +34,7 @@ class Food
 	int _points;
 public:
 	Food() {
-		while (true)
-		{
+		while (true){
 			int tempX = rand() % (gameWidth - 1) + 1;
 			int tempY = rand() % (gameHeight - 1) + 1;
 			//
