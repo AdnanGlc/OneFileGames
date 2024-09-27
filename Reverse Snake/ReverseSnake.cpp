@@ -20,7 +20,6 @@ enum Color { BLUE = 1, GREEN, CYAN, RED, PURPLE, YELLOW, WHITE, GRAY, DARK_CYAN,
 const int dirX[4] = { 0,0,1,-1 };
 const int dirY[4] = { -1,1,0,0 };
 const char CDir[4] = { 'w','s','d','a' };
-//const char CDir[4] = { 'w','s','d','a'};
 //
 template<class T>
 void advCout(int x, int y, T msg, Color color = WHITE){
@@ -165,14 +164,10 @@ public:
 	~Snake() { ; }
 };
 
-class Player : public Entity
-{
+class Player : public Entity{
 	COORD _position;
 	float  _moveSpeed;
-	void ConsumeFood()
-	{
-
-	}
+	void ConsumeFood(){;}
 	//
 	void AsyncMove(COORD dir)
 	{
