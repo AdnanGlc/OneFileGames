@@ -22,7 +22,7 @@ const int dirY[4] = { -1,1,0,0 };
 const char CDir[4] = { 'w','s','d','a' };
 //
 template<class T>
-void advCout(int x, int y, T msg, Color color = WHITE){
+void advCout(int x, int y, T msg, Color color = WHITE) {
 	SetConsoleTextAttribute(h, color);
 	SetConsoleCursorPosition(h, { (short)x,(short)y });
 	cout << msg;
@@ -32,9 +32,10 @@ class Food
 {
 	COORD _position;
 	int _points;
+	bool _isBad;
 public:
-	Food() {
-		while (true){
+	Food(bool isBad = false) {
+		while (true) {
 			int tempX = rand() % (gameWidth - 1) + 1;
 			int tempY = rand() % (gameHeight - 1) + 1;
 			//
@@ -44,29 +45,34 @@ public:
 			_points = rand() % 3 + 1;
 			_gameMap[tempX][tempY] = cFood;
 			advCout(tempX, tempY, cFood, Color(_points));
+			_isBad = isBad;
 			break;
 		}
 	}
-	Food(const Food& obj){
+	Food(const Food& obj) {
+		if (&obj == nullptr)return;
 		_position = obj._position;
 		_points = obj._points;
+		_isBad = obj._isBad;
 	}
 	~Food() { ; }
 	int getPoints() { return _points; }
 	COORD getPosition() { return _position; }
 	void DecreasePoints() { _points--; }
+	bool IsBad() { return _isBad; }
+	void DeclareBad() { _isBad = true; }
 };
-list<Food> _food;
+list<Food> _allFood;
+list<Food> _foodToConsume;
 Food FindFood(int x, int y)
 {
-	for (auto it : _food)
+	for (auto it : _allFood)
 		if (it.getPosition().X == x && it.getPosition().Y == y)
 			return it;
 }
 class Entity
 {
 protected:
-	list<Food> _foodToConsume;//push_front, pop_back
 	clock_t _lastMoved;
 	float _moveSpeed;
 	bool _alive;
@@ -77,13 +83,81 @@ public:
 	virtual void Move() = 0;
 	~Entity() { ; }
 };
+//
+class Player : public Entity {
+	COORD _position;
+	float  _moveSpeed;
+	void ConsumeFood() {
+		if (!_allFood.size())return;
+		Food f = _allFood.back();
+		f.DeclareBad();
+		_foodToConsume.push_back(f);
+		_allFood.pop_back();
+	}
+	//
+	void AsyncMove(COORD dir)
+	{
+		_lastMoved = clock();
+		COORD tempPos = _position;
+		_gameMap[_position.X][_position.Y] = ' ';
+		tempPos.X += dir.X;
+		tempPos.Y += dir.Y;
+		if (tempPos.X > 0 && tempPos.X < gameWidth - 1 && tempPos.Y>0 && tempPos.Y < gameHeight - 1) {
+			if (_gameMap[tempPos.X][tempPos.Y] == cBody) { _alive = false; return; }
+			else if (_gameMap[tempPos.X][tempPos.Y] == cFood){  ConsumeFood(); }
+			advCout(_position.X, _position.Y, ' ');
+			advCout(tempPos.X, tempPos.Y, cFood, _color);
+			_gameMap[tempPos.X][tempPos.Y] = cFood;
+			_position = tempPos;
+		}
+
+	}
+public:
+	Player() : Entity() {
+		_moveSpeed = 150.0f;
+		_color = LIGHT_BLUE;
+		_position.X = gameWidth / 2 + gameWidth / 4;
+		_position.Y = gameHeight / 2 - 1;
+		_gameMap[_position.X][_position.Y] = cFood;
+		advCout(_position.X, _position.Y, cFood, _color);
+	}
+	void Move() {
+		if (float(clock() - _lastMoved) / float(CLOCKS_PER_SEC / 1000) < _moveSpeed)return;
+		if (GetAsyncKeyState(VK_UP) || GetAsyncKeyState('W') || GetAsyncKeyState('w'))
+			AsyncMove(directions[VK_UP]);
+		if (GetAsyncKeyState(VK_DOWN) || GetAsyncKeyState('S') || GetAsyncKeyState('s'))
+			AsyncMove(directions[VK_DOWN]);
+		if (GetAsyncKeyState(VK_LEFT) || GetAsyncKeyState('A') || GetAsyncKeyState('a'))
+			AsyncMove(directions[VK_LEFT]);
+		if (GetAsyncKeyState(VK_RIGHT) || GetAsyncKeyState('D') || GetAsyncKeyState('d'))
+			AsyncMove(directions[VK_RIGHT]);
+	}
+	COORD getPosition() { return _position; }
+	bool IsAlive() { return _alive; }
+	void Kill() { _alive = false; }
+	~Player() { ; }
+};
+//
 class Snake : public Entity
 {
 	list<COORD> _body;
 	Color _headColor;
-	void ConsumeFood()
-	{
+	void ConsumeFood() { 
+		if (_foodToConsume.size()) {
+			if (_foodToConsume.back().IsBad()) { ShrinkBody(); ShrinkBody(); return; }
 
+			_foodToConsume.back().DecreasePoints();
+			if (_foodToConsume.back().getPoints() <= 0)
+				_foodToConsume.pop_back();
+			return;
+		}
+		else ShrinkBody();
+	}
+	void ShrinkBody() {
+		advCout(_body.back().X, _body.back().Y, ' ');
+		_gameMap[_body.back().X][_body.back().Y] = ' ';
+		_body.pop_back();
+		if (_foodToConsume.size())_foodToConsume.pop_back();
 	}
 	char FindDirection()
 	{
@@ -98,10 +172,10 @@ class Snake : public Entity
 			tempPath = paths.front().second;
 			paths.pop_front();
 			if (_gameMap[x][y] == cFood)break;
-			for (size_t i = 0; i < 4; i++){
+			for (size_t i = 0; i < 4; i++) {
 				int newX = x + dirX[i];
 				int newY = y + dirY[i];
-				if (_gameMap[newX][newY] != cWall && _gameMap[newX][newY] != cBody && !visited[newX][newY]){
+				if (_gameMap[newX][newY] != cWall && _gameMap[newX][newY] != cBody && !visited[newX][newY]) {
 					visited[newX][newY] = 1;
 					paths.push_back(make_pair(COORD{ (short)newX,(short)newY }, tempPath + CDir[i]));
 				}
@@ -109,10 +183,10 @@ class Snake : public Entity
 		}
 		return tempPath[1];
 	}
-	void ExtendBody_b(int x,int y)
+	void ExtendBody_b(int x, int y)
 	{
 		_body.push_back(COORD{ (short)(x),(short)(y) });
-		advCout(x,y, cBody, _color);
+		advCout(x, y, cBody, _color);
 		_gameMap[x][y] = cBody;
 	}
 	void ExtendBody_f(int x, int y)
@@ -124,20 +198,21 @@ class Snake : public Entity
 		_gameMap[x][y] = cBody;
 	}
 public:
-	Snake() : Entity() { 
-		_moveSpeed = 200.0f; 
+	Snake() : Entity() {
+		_moveSpeed = 160.0f;
 		_color = RED;
 		_headColor = PINK;
 		for (size_t i = 0; i < 5; i++)
 			ExtendBody_b(gameWidth / 2 - i, gameHeight / 2);
 		advCout(_body.front().X, _body.front().Y, cBody, _headColor);
 	}
-	void Move() { 
+	void Move() { ; }
+	void Move(Player* player) {
+
 		if (float(clock() - _lastMoved) / float(CLOCKS_PER_SEC / 1000) < _moveSpeed)return;
 		_lastMoved = clock();
 		//bfs -> food/player
 		char dir = FindDirection();
-		advCout(0, 0, dir);
 		COORD c{ 0,0 };
 		if		(dir == 'w')c = directions[VK_UP];
 		else if (dir == 's')c = directions[VK_DOWN];
@@ -146,72 +221,18 @@ public:
 		else return;
 		//move
 		ExtendBody_f(_body.front().X + c.X, _body.front().Y + c.Y);
-		//delete tail?
-		if (_foodToConsume.size()){
-			_foodToConsume.back().DecreasePoints();
-			if (_foodToConsume.back().getPoints()<=0)
-				_foodToConsume.pop_back();
-			return;
+		if (player->getPosition().X == _body.front().X && player->getPosition().Y == _body.front().Y) {
+			player->Kill();
 		}
-		else {
-			advCout(_body.back().X, _body.back().Y, ' ');
-			_gameMap[_body.back().X][_body.back().Y] = ' ';
-			_body.pop_back();
-		}
+		ConsumeFood();
 	}
 	list<COORD>& getBody() { return _body; }
 	~Snake() { ; }
 };
-
-class Player : public Entity{
-	COORD _position;
-	float  _moveSpeed;
-	void ConsumeFood(){;}
-	//
-	void AsyncMove(COORD dir)
-	{
-		_lastMoved = clock();
-		COORD tempPos = _position;
-		tempPos.X += dir.X;
-		tempPos.Y += dir.Y;
-		if (tempPos.X > 0 && tempPos.X < gameWidth - 1 && tempPos.Y>0 && tempPos.Y < gameHeight - 1){
-			if (_gameMap[tempPos.X][tempPos.Y] == cBody) { _alive = false; return; }
-			if (_gameMap[tempPos.X][tempPos.Y] == cFood); { ConsumeFood(); }
-			advCout(_position.X, _position.Y, ' ');
-			_gameMap[_position.X][_position.Y] = ' ';
-			advCout(tempPos.X, tempPos.Y, cFood,_color);
-			_gameMap[tempPos.X][tempPos.Y] = cFood;
-			_position = tempPos;
-		}
-			
-	}
-public:
-	Player() : Entity() {
-		_moveSpeed = 150.0f;
-		_color = LIGHT_BLUE;
-		_position.X = gameWidth / 2 + gameWidth / 4;
-		_position.Y = gameHeight / 2-1;
-		_gameMap[_position.X][_position.Y] = cFood;
-		advCout(_position.X, _position.Y, cFood, _color);
-	}
-	void Move(){
-		if (float(clock() - _lastMoved) / float(CLOCKS_PER_SEC / 1000) < _moveSpeed)return;
-		if (GetAsyncKeyState(VK_UP) || GetAsyncKeyState('W') || GetAsyncKeyState('w'))
-			AsyncMove(directions[VK_UP]);
-		if (GetAsyncKeyState(VK_DOWN) || GetAsyncKeyState('S') || GetAsyncKeyState('s'))
-			AsyncMove(directions[VK_DOWN]);
-		if (GetAsyncKeyState(VK_LEFT) || GetAsyncKeyState('A') || GetAsyncKeyState('a'))
-			AsyncMove(directions[VK_LEFT]);
-		if (GetAsyncKeyState(VK_RIGHT) || GetAsyncKeyState('D') || GetAsyncKeyState('d'))
-			AsyncMove(directions[VK_RIGHT]);
-	}
-	COORD getPosition() { return _position; }
-	~Player() { ; }
-};
 class Game
 {
-	Player *_player;
-	Snake *_snake;
+	Player* _player;
+	Snake* _snake;
 	clock_t _lastGenerated;
 	float _frequency = 2000.0f;
 	void SetFont(int fontSize = 15)
@@ -260,6 +281,18 @@ class Game
 			advCout(0, i + 1, cWall, LIGHT_GREEN);
 			advCout(gameWidth - 1, i + 1, cWall, LIGHT_GREEN);
 		}
+		//setup empty map
+		_gameMap.clear();
+		string s = "";
+		for (size_t i = 0; i < gameWidth; i++)s += " ";
+		s[0] = s[gameWidth - 1] = cWall;
+		_gameMap.insert(_gameMap.begin(), gameHeight, s);
+		s = "";
+		for (size_t i = 0; i < gameWidth; i++)s += cWall;
+		_gameMap[0] = _gameMap[gameHeight - 1] = s;
+		//
+		/*for (auto it : _gameMap)
+			cout << it << endl;*/
 	}
 	void UpdateTitle()
 	{
@@ -289,39 +322,46 @@ public:
 	{
 		_player = new Player();
 		_snake = new Snake();
-		while (true)
+		while (_player->IsAlive() && _snake->getBody().size())
 		{
 			_player->Move();
-			_snake->Move();
+			_snake->Move(_player);
 			if (float(clock() - _lastGenerated) / float(CLOCKS_PER_SEC / 1000) > _frequency)
 			{
-				_food.push_back(Food());
+				_allFood.push_back(Food());
 				_lastGenerated = clock();
 			}
 		}
+		system("cls");
+		if(_player->IsAlive())	advCout(gameWidth/2-3, gameHeight/2, "YOU WIN");
+		else advCout(gameWidth / 2 - 5, gameHeight / 2, "SNAKE WINS");
 	}
 };
 int main()
 {
 	//
-	directions[VK_UP]	= { 0,-1 };//VK_UP
-	directions[VK_DOWN]	= { 0,1 };//VK_DOWN
-	directions[VK_LEFT]	= { -1,0 };//VK_LEFT
-	directions[VK_RIGHT]	= { 1,0 };//VK_RIGHT	
-	//setup empty map
-	string s = "";
-	for (size_t i = 0; i < gameWidth; i++)s += " ";
-	s[0] = s[gameWidth - 1] = cWall;
-	_gameMap.insert(_gameMap.begin(), gameHeight, s);
-	s = "";
-	for (size_t i = 0; i < gameWidth; i++)s += cWall;
-	_gameMap[0] = _gameMap[gameHeight - 1] = s;
+	directions[VK_UP] = { 0,-1 };//VK_UP
+	directions[VK_DOWN] = { 0,1 };//VK_DOWN
+	directions[VK_LEFT] = { -1,0 };//VK_LEFT
+	directions[VK_RIGHT] = { 1,0 };//VK_RIGHT	
 	//
-	for (auto it : _gameMap)
-		cout << it << endl;
+	Game *game;
+	while (true) {
+		game = new Game();
+		game->Play();
+		delete game;
 
-	Game game;
-	game.Play();
+		bool playAgain = true;
+		advCout(1, gameHeight - 3, "Play again - ENTER");
+		advCout(1, gameHeight - 2, "Exit- ESC");
+
+		while (true)
+		{
+			if (GetAsyncKeyState(VK_RETURN))break;
+			if (GetAsyncKeyState(VK_ESCAPE)) { playAgain = false; break; }
+		}
+		if (!playAgain)break;
+	}
 
 	system("pause>null");
 	return 0;
