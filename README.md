@@ -35,6 +35,13 @@ The classic two-player game—connect four pieces in a row to win
 **Preview:**  
 ![Connect Four](https://github.com/user-attachments/assets/c48c1c4f-4856-4bb4-93d1-49fde5fa8c4b)  
 
+or play with AI
+
+**Preview**
+
+![image](https://github.com/user-attachments/assets/247627f1-1373-49b2-a028-160644e91ce9)
+
+
 ---
 
 ### 🏓 Pong  
